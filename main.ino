@@ -156,9 +156,14 @@ void initWiFi() {
 void mqtt_reconnect() {
 	digitalWrite(LED_BUILTIN, HIGH);
 
+	int fail_count = 0;
+
 	// Loop until we're reconnected
 	while (!mqttClient.connected()) {
 		digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+
+		if (++fail_count > 5)
+			ESP.restart();
 
 		notify("mqtt?");
 
