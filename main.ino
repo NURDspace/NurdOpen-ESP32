@@ -13,14 +13,14 @@
 #define P_D 5
 #define P_E 15
 #define P_OE 2
-#define matrix_width 32
-#define matrix_height 16
+#define matrix_width 64
+#define matrix_height 32
 #define MAX_PIXELS 140
 #define MIN(X, Y) (((X) < (Y)) ? (X) : (Y))
 
 uint8_t display_draw_time=20;
-PxMATRIX display(64,32,P_LAT, P_OE,P_A,P_B,P_C,P_D);
-hw_timer_t * timer = NULL;
+PxMATRIX display(matrix_width, matrix_height, P_LAT, P_OE,P_A,P_B,P_C,P_D);
+hw_timer_t * timer { nullptr };
 portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
 AsyncUDP udp;
 WiFiClient espMqttClient;
@@ -58,15 +58,12 @@ void IRAM_ATTR display_updater(){
 
 void display_update_enable(bool is_enable)
 {
-	if (is_enable)
-	{
-		timer = timerBegin(0, 80, true);
+	if (is_enable) {
 		timerAttachInterrupt(timer, &display_updater, true);
 		timerAlarmWrite(timer, 4000, true);
 		timerAlarmEnable(timer);
 	}
-	else
-	{
+	else {
 		timerDetachInterrupt(timer);
 		timerAlarmDisable(timer);
 	}
@@ -132,21 +129,37 @@ void scroll_text_char(uint8_t ypos, unsigned long scroll_delay, char* text, uint
 
 
 void initWiFi() {
+	display_update_enable(true);
 	notify("init wifi");
+	delay(1000);
+
+	// keep screen on & search for wifi gives strange reproducable timing related crashes
+	display_update_enable(false);
+
 	WiFi.begin("NurdSpace", "harkharkhark");
 
+	digitalWrite(LED_BUILTIN, HIGH);
+
 	while (WiFi.status() != WL_CONNECTED) {
+		digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+
 		Serial.print(".");
-		delay(1000);
+		delay(200);
 	}
+
+	digitalWrite(LED_BUILTIN, LOW);
 
 	notify("connected");
 	Serial.println(WiFi.localIP());
 }
 
 void mqtt_reconnect() {
+	digitalWrite(LED_BUILTIN, HIGH);
+
 	// Loop until we're reconnected
 	while (!mqttClient.connected()) {
+		digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+
 		notify("mqtt?");
 
 		Serial.print("Attempting MQTT connection...");
@@ -162,10 +175,12 @@ void mqtt_reconnect() {
 			notify("mqtt-");
 			Serial.print("failed, rc=");
 			Serial.print(mqttClient.state());
-			Serial.println(" try again in 1 second");
-			delay(1000);
+			Serial.println(" try again in 0.1 second");
+			delay(100);
 		}
 	}
+
+	digitalWrite(LED_BUILTIN, LOW);
 }
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
@@ -196,12 +211,19 @@ void setup() {
 
 	Serial.println(__DATE__ " " __TIME__);
 
+	pinMode(LED_BUILTIN, OUTPUT);
+
+	timer = timerBegin(0, 80, true);
+
 	display.setBrightness(128);
 	display.begin(16);
 	display.clearDisplay();
-	display_update_enable(true);
+
+	WiFi.setSleep(false);
 
 	initWiFi();
+
+	display_update_enable(true);
 
 	scroll_text(0, 30, WiFi.localIP().toString(), 0, 255, 0);
 
